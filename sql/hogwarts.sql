@@ -308,26 +308,64 @@ SELECT nome_produto, loja, preco, estoque, ativo FROM produto;
 -- 3. REMOÇÃO DE DADOS (DELETE) E TESTES DE RESTRIÇÕES
 -- =====================================================================
 -- Questão 13
--- Erro:
--- Explicação:
+-- DELETE FROM casa WHERE nome_casa = 'Sonserina';
+-- Erro: Error Code: 1451. Cannot delete or update a parent row: a foreign key
+--       constraint fails (`hogwarts`.`professor`, CONSTRAINT `fk_professor_casa`
+--       FOREIGN KEY (`id_casa`) REFERENCES `casa` (`id_casa`))
+-- Explicação: a Sonserina (id_casa = 2) é referenciada por outras tabelas: o
+-- Snape é diretor dela (professor.id_casa = 2) e Draco, Pansy e Crabbe são
+-- alunos dela (aluno.id_casa = 2). Se a casa fosse apagada, essas linhas
+-- ficariam apontando para uma casa que não existe (registros "órfãos"). Como as
+-- FKs não têm ON DELETE CASCADE/SET NULL, o padrão é RESTRICT e o banco recusa.
 
 -- Questão 14
--- Erro:
--- Explicação:
+-- INSERT INTO aluno (nome, ano_escolar, id_casa) VALUES ('Dobby', 8, 1);
+-- Erro: Error Code: 3819. Check constraint 'chk_aluno_ano' is violated.
+-- Explicação: a restrição CHECK da tabela aluno só aceita ano_escolar entre 1
+-- e 7 (Hogwarts tem 7 anos). O valor 8 viola a regra e a linha não é gravada.
 
 -- Questão 15
--- Erro:
--- Explicação:
+-- INSERT INTO aluno (nome, ano_escolar, id_casa, email)
+-- VALUES ('Harry Potter (Polissuco)', 5, 1, 'harry.potter@hogwarts.edu');
+-- Erro: Error Code: 1062. Duplicate entry 'harry.potter@hogwarts.edu' for key
+--       'aluno.uq_aluno_email'
+-- Explicação: a restrição UNIQUE uq_aluno_email (questão 7) impede dois alunos
+-- com o mesmo e-mail. O e-mail já pertence ao Harry Potter verdadeiro, então o
+-- "impostor" é barrado, mesmo com o nome diferente.
 
 -- Questão 16
--- Erro:
--- Explicação:
+-- DELETE FROM professor WHERE nome = 'Severo Snape';
+-- Erro: Error Code: 1451. Cannot delete or update a parent row: a foreign key
+--       constraint fails (`hogwarts`.`disciplina`, CONSTRAINT
+--       `fk_disciplina_professor` FOREIGN KEY (`id_prof`) REFERENCES
+--       `professor` (`id_prof`))
+-- Explicação: o Snape ministra a disciplina Poções (disciplina.id_prof = 2).
+-- Apagar o professor deixaria a disciplina apontando para um professor
+-- inexistente, então a FK impede a exclusão (integridade referencial).
 
 -- Questão 17
+DELETE FROM professor WHERE nome = 'Gilderoy Lockhart';
+-- Por que funciona: nenhuma outra tabela referencia o Lockhart. Nenhuma
+-- disciplina nem registro de pontos aponta para o id_prof = 8 (e o fato de ele
+-- não dirigir casa só diz respeito à própria linha dele, não a filhos). Sem filhos
+-- dependentes, a FK não tem o que proteger. Já o Snape é referenciado por
+-- Poções, por isso a questão 16 falhou.
 
 -- Questão 18
+DELETE FROM matricula
+ WHERE id_aluno IN (SELECT id_aluno FROM aluno WHERE nome = 'Vicente Crabbe');
+
+DELETE FROM aluno WHERE nome = 'Vicente Crabbe';
 
 -- Questão 19
+DELETE FROM disciplina
+ WHERE id_disc NOT IN (SELECT id_disc FROM matricula);
+
+-- Confira: 8 professores, 13 alunos, 8 disciplinas (sem Estudo dos Trouxas) e 33 matrículas
+SELECT 'professor' AS tabela, COUNT(*) AS total FROM professor
+UNION ALL SELECT 'aluno',      COUNT(*) FROM aluno
+UNION ALL SELECT 'disciplina', COUNT(*) FROM disciplina
+UNION ALL SELECT 'matricula',  COUNT(*) FROM matricula;
 
 
 -- =====================================================================
