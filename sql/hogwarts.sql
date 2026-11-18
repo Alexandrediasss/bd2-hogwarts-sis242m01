@@ -866,46 +866,184 @@ SELECT 'Total de galeões nos cofres dos alunos',     SUM(a.saldo_galeoes)      
 -- 7. VIEWS
 -- =====================================================================
 -- Questão 31
+CREATE OR REPLACE VIEW vw_placar_casas AS
+SELECT c.nome_casa, c.pontos
+  FROM casa c
+ ORDER BY c.pontos DESC;
 
 -- Questão 32
+CREATE OR REPLACE VIEW vw_boletim AS
+SELECT a.nome                               AS aluno,
+       COALESCE(c.nome_casa, 'Sem casa')    AS casa,
+       d.nome_disc                          AS disciplina,
+       COALESCE(p.nome, 'Sem professor')    AS professor,
+       m.nota,
+       m.situacao
+  FROM matricula m
+  JOIN aluno a          ON a.id_aluno = m.id_aluno
+  JOIN disciplina d     ON d.id_disc  = m.id_disc
+  LEFT JOIN casa c      ON c.id_casa  = a.id_casa
+  LEFT JOIN professor p ON p.id_prof  = d.id_prof;
 
 -- Questão 33
+CREATE OR REPLACE VIEW vw_extrato_loja AS
+SELECT a.nome          AS aluno,
+       pr.nome_produto AS produto,
+       pr.loja,
+       co.quantidade,
+       co.valor_total,
+       co.data_compra
+  FROM compra co
+  JOIN aluno a    ON a.id_aluno    = co.id_aluno
+  JOIN produto pr ON pr.id_produto = co.id_produto;
 
 -- Questão 34
+CREATE OR REPLACE VIEW vw_alunos_destaque AS
+SELECT a.nome                             AS aluno,
+       COALESCE(c.nome_casa, 'Sem casa')  AS casa,
+       ROUND(AVG(m.nota), 2)              AS media
+  FROM aluno a
+  JOIN matricula m ON m.id_aluno = a.id_aluno
+  LEFT JOIN casa c ON c.id_casa  = a.id_casa
+ GROUP BY a.id_aluno, a.nome, c.nome_casa
+HAVING AVG(m.nota) >= 8;
 
 -- Questão 35
+CREATE OR REPLACE VIEW vw_quadro_professores AS
+SELECT p.nome AS professor,
+       COALESCE((SELECT c.nome_casa
+                   FROM casa c
+                  WHERE c.id_casa = p.id_casa), 'Não é diretor')  AS casa_que_dirige,
+       (SELECT COUNT(*)
+          FROM disciplina d
+         WHERE d.id_prof = p.id_prof)                             AS qtd_disciplinas,
+       COALESCE((SELECT SUM(r.pontos)
+                   FROM registro_pontos r
+                  WHERE r.id_prof = p.id_prof), 0)                AS total_pontos_concedidos
+  FROM professor p;
 
 -- Questão 36
+-- placar
+SELECT * FROM vw_placar_casas;
+
+-- boletim só da Corvinal
+SELECT * FROM vw_boletim WHERE casa = 'Corvinal';
+
+-- total faturado por loja a partir do extrato
+SELECT loja, SUM(valor_total) AS total_faturado
+  FROM vw_extrato_loja
+ GROUP BY loja
+ ORDER BY total_faturado DESC;
+
+-- alunos destaque, da maior para a menor média
+SELECT * FROM vw_alunos_destaque ORDER BY media DESC;
+
+-- quadro de professores, de quem mais concedeu para quem menos concedeu
+SELECT * FROM vw_quadro_professores ORDER BY total_pontos_concedidos DESC;
 
 -- Questão 37
--- O que mudou e por quê:
+INSERT INTO registro_pontos (id_aluno, id_prof, pontos, motivo, data_registro)
+VALUES (11, 1, 20, 'Venceu a primeira tarefa do Torneio', '2026-11-10');
+
+SELECT * FROM vw_placar_casas;
+-- O que mudou e por quê: a Lufa-Lufa passou de 50 para 70 pontos (o trigger
+-- somou os 20 pontos do Cedrico na casa dele). A view mostrou o valor novo sem
+-- ser recriada porque uma view não guarda dados: ela é só uma consulta salva.
+-- Toda vez que é consultada, o SELECT dela é executado de novo sobre as tabelas
+-- atuais, então sempre reflete o estado mais recente.
 
 -- Questão 38
+CREATE OR REPLACE VIEW vw_placar_casas AS
+SELECT c.nome_casa, c.fundador, c.pontos
+  FROM casa c
+ ORDER BY c.pontos DESC;
+
+SELECT * FROM vw_placar_casas;
 
 
 -- =====================================================================
 -- 8. CONTROLE DE ACESSO (DCL)
 -- =====================================================================
+-- (limpeza para o script poder ser rodado do zero mais de uma vez)
+DROP USER IF EXISTS 'filch'@'localhost', 'mcgonagall'@'localhost',
+                    'dumbledore'@'localhost', 'percy'@'localhost';
+DROP ROLE IF EXISTS 'monitor';
+
 -- Questão 39
+CREATE USER 'filch'@'localhost'      IDENTIFIED BY 'MadameNorra#1';
+CREATE USER 'mcgonagall'@'localhost' IDENTIFIED BY 'Animago#Gato1';
+CREATE USER 'dumbledore'@'localhost' IDENTIFIED BY 'Fenix#Fawkes1';
 
 -- Questão 40
+GRANT SELECT ON hogwarts.vw_placar_casas TO 'filch'@'localhost';
 
 -- Questão 41
+GRANT SELECT, INSERT ON hogwarts.registro_pontos TO 'mcgonagall'@'localhost';
+GRANT SELECT ON hogwarts.aluno      TO 'mcgonagall'@'localhost';
+GRANT SELECT ON hogwarts.vw_boletim TO 'mcgonagall'@'localhost';
 
 -- Questão 42
+GRANT ALL PRIVILEGES ON hogwarts.* TO 'dumbledore'@'localhost' WITH GRANT OPTION;
 
 -- Questão 43
+SHOW GRANTS FOR 'filch'@'localhost';
+SHOW GRANTS FOR 'mcgonagall'@'localhost';
 
 -- Questão 44
+-- >>> Executar em uma NOVA CONEXÃO com o usuário filch <<<
+SELECT * FROM hogwarts.vw_placar_casas;
+-- SELECT * FROM hogwarts.aluno;
 -- Resultado de cada comando:
+-- 1) SELECT na vw_placar_casas: funciona e mostra o placar, porque o filch tem
+--    SELECT nessa view (questão 40).
+-- 2) SELECT * FROM aluno: Error Code: 1142. SELECT command denied to user
+--    'filch'@'localhost' for table 'aluno'. Ele não tem nenhuma permissão na
+--    tabela aluno, só na view.
 
 -- Questão 45
--- Como o trigger conseguiu atualizar a casa:
+-- >>> Executar em uma NOVA CONEXÃO com o usuário mcgonagall <<<
+-- a) funciona:
+INSERT INTO hogwarts.registro_pontos (id_aluno, id_prof, pontos, motivo, data_registro)
+VALUES (2, 1, 10, 'Ajudou um colega em Transfiguração', '2026-11-10');
+-- b) é negado:
+-- UPDATE hogwarts.casa SET pontos = 1000 WHERE id_casa = 1;
+-- Erro: Error Code: 1142. UPDATE command denied to user 'mcgonagall'@'localhost'
+--       for table 'casa'
+--
+-- Como o trigger conseguiu atualizar a casa: o trigger não roda com as
+-- permissões de quem fez o INSERT, e sim com as permissões do seu DEFINER (o
+-- usuário que criou o trigger, no caso o root), porque o padrão é SQL SECURITY
+-- DEFINER. A McGonagall só precisa ter permissão de INSERT em registro_pontos;
+-- o UPDATE em casa feito dentro do trg_pontos_casa é executado com os
+-- privilégios do root. Assim ela consegue dar pontos pelo caminho "oficial",
+-- mas não consegue mexer direto no placar.
+--
+-- Confira: depois da questão 45, a Grifinória tem 110 pontos.
+SELECT nome_casa, pontos FROM hogwarts.casa WHERE nome_casa = 'Grifinória';
 
 -- Questão 46
+REVOKE INSERT ON hogwarts.registro_pontos FROM 'mcgonagall'@'localhost';
+SHOW GRANTS FOR 'mcgonagall'@'localhost';
+-- Agora ela só tem SELECT em registro_pontos, aluno e vw_boletim.
 
 -- Questão 47
--- Vantagem dos papéis:
+CREATE ROLE 'monitor';
+GRANT SELECT ON hogwarts.vw_boletim      TO 'monitor';
+GRANT SELECT ON hogwarts.vw_placar_casas TO 'monitor';
+
+CREATE USER 'percy'@'localhost' IDENTIFIED BY 'Monitor#Chefe1';
+GRANT 'monitor' TO 'percy'@'localhost';
+SET DEFAULT ROLE 'monitor' TO 'percy'@'localhost';
+
+SHOW GRANTS FOR 'percy'@'localhost' USING 'monitor';
+-- Vantagem dos papéis: as permissões são definidas uma única vez no papel e
+-- depois só se atribui o papel a cada monitor. Se amanhã os monitores
+-- precisarem ver outra view, basta um GRANT no papel e todos recebem de uma
+-- vez; para tirar um monitor, basta revogar o papel dele. Sem papéis seria
+-- preciso repetir (e manter sincronizados) vários GRANT/REVOKE para cada
+-- usuário, o que é trabalhoso e fácil de esquecer algum.
 
 -- Questão 48
-
+DROP USER 'filch'@'localhost', 'mcgonagall'@'localhost',
+          'dumbledore'@'localhost', 'percy'@'localhost';
+DROP ROLE 'monitor';
