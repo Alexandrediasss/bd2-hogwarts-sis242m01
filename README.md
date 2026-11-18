@@ -9,7 +9,7 @@
 
 | Nome | Matrícula | Usuário do GitHub |
 | --- | --- | --- |
-|  |  |  |
+| Carlos Alexandre Dias |  | Alexandrediasss |
 
 ## O cenário
 
